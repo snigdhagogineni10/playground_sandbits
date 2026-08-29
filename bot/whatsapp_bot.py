@@ -1,5 +1,5 @@
 """
-bot/whatsapp_bot.py — WhatsApp bot via Twilio + Flask.
+bot/whatsapp_bot.py — WhatsApp bot via Green API + Flask.
 
 Language-selection flow (numbered replies)
 ──────────────────────────────────────────
@@ -16,16 +16,41 @@ All subsequent routing is handled by Sub-Task 6.
 from __future__ import annotations
 
 import logging
+import sys
+import os
+
+# Make sure Python can find utils/, services/, config.py from project root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import requests
 
 from flask import Flask, Response, request
-from twilio.twiml.messaging_response import MessagingResponse
 
+from config import GREEN_API_INSTANCE_ID, GREEN_API_TOKEN
 from utils.language_map import SUPPORTED_LANGUAGES, get_name
 from utils.session import get_session, update_session
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# ── Green API helper ──────────────────────────────────────────────────────────
+
+GREEN_API_URL = "https://api.green-api.com"
+
+
+def send_message(chat_id: str, message: str) -> None:
+    """Send a WhatsApp message via Green API."""
+    url = f"{GREEN_API_URL}/waInstance{GREEN_API_INSTANCE_ID}/sendMessage/{GREEN_API_TOKEN}"
+    payload = {
+        "chatId": chat_id,
+        "message": message,
+    }
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        logger.error("Failed to send message via Green API: %s", e)
+
 
 # ── language menu helpers ─────────────────────────────────────────────────────
 _ORDERED_LANGUAGES: list[tuple[str, str]] = list(SUPPORTED_LANGUAGES.items())
@@ -62,16 +87,27 @@ def _target_choices(excluded_iso: str) -> list[tuple[str, str]]:
 
 @app.route("/webhook", methods=["POST"])
 def webhook() -> Response:
-    """Receive inbound Twilio WhatsApp messages and dispatch them."""
-    from_number: str = request.form.get("From", "")
-    body: str = (request.form.get("Body") or "").strip()
-    chat_id: str = from_number  # use the sender number as session key
+    """Receive inbound Green API WhatsApp messages and dispatch them."""
+    data = request.get_json(force=True, silent=True) or {}
+
+    # Green API sends a nested structure
+    sender_data = data.get("senderData", {})
+    message_data = data.get("messageData", {})
+
+    chat_id: str = sender_data.get("chatId", "")
+    body: str = (
+        message_data.get("textMessageData", {}).get("textMessage", "")
+        or message_data.get("extendedTextMessageData", {}).get("text", "")
+    ).strip()
+
+    if not chat_id or not body:
+        return Response("ok", status=200)
 
     session = get_session(chat_id)
-    twiml = MessagingResponse()
     reply_text = _dispatch(chat_id, session, body)
-    twiml.message(reply_text)
-    return Response(str(twiml), mimetype="application/xml")
+    send_message(chat_id, reply_text)
+
+    return Response("ok", status=200)
 
 
 def _dispatch(chat_id: str, session: dict, body: str) -> str:
@@ -191,4 +227,5 @@ def _placeholder_router(session: dict, body: str) -> str:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
