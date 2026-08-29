@@ -61,7 +61,7 @@ def _step1_menu() -> str:
     lines = ["*Step 1 of 2* — Choose your *source language*:\n"]
     for i, (name, _) in enumerate(_ORDERED_LANGUAGES, start=1):
         lines.append(f"{i}. {name}")
-    lines.append("0. 🔍 Auto-detect")
+    lines.append("0. Auto-detect")
     lines.append("\nReply with the number of your choice.")
     return "\n".join(lines)
 
@@ -84,6 +84,12 @@ def _target_choices(excluded_iso: str) -> list[tuple[str, str]]:
 
 
 # ── webhook ───────────────────────────────────────────────────────────────────
+
+@app.route("/", methods=["GET"])
+def health() -> Response:
+    """Health check endpoint so Render knows the service is alive."""
+    return Response("OK", status=200)
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook() -> Response:
@@ -132,7 +138,7 @@ def _dispatch(chat_id: str, session: dict, body: str) -> str:
     if not session.get("target_language_code"):
         update_session(chat_id, _step="choose_source")
         return (
-            "👋 Welcome to the Multilingual Education Bot!\n\n"
+            "Welcome to the Multilingual Education Bot!\n\n"
             + _step1_menu()
         )
 
@@ -153,8 +159,8 @@ def _handle_source_choice(chat_id: str, body: str) -> str:
             _step="choose_target",
         )
         return (
-            "✅ Source: *Auto-detect*\n\n"
-            + _step2_menu("")          # no exclusion for auto
+            "Source: Auto-detect\n\n"
+            + _step2_menu("")
         )
 
     try:
@@ -168,14 +174,14 @@ def _handle_source_choice(chat_id: str, body: str) -> str:
                 _step="choose_target",
             )
             return (
-                f"✅ Source: *{name}*\n\n"
+                f"Source: {name}\n\n"
                 + _step2_menu(iso)
             )
     except ValueError:
         pass
 
     return (
-        "⚠️ Please reply with a number from the list.\n\n"
+        "Please reply with a number from the list.\n\n"
         + _step1_menu()
     )
 
@@ -197,17 +203,17 @@ def _handle_target_choice(chat_id: str, session: dict, body: str) -> str:
                 _step=None,
             )
             return (
-                f"✅ Language pair set!\n\n"
-                f"  • Source: *{src_label}*\n"
-                f"  • Target: *{tgt_name}*\n\n"
-                "You can now send me text or a video to translate. "
+                f"Language pair set!\n\n"
+                f"  Source: {src_label}\n"
+                f"  Target: {tgt_name}\n\n"
+                "You can now send me text to translate. "
                 'Reply "start" at any time to change the language pair.'
             )
     except ValueError:
         pass
 
     return (
-        "⚠️ Please reply with a number from the list.\n\n"
+        "Please reply with a number from the list.\n\n"
         + _step2_menu(src_iso)
     )
 
@@ -217,13 +223,13 @@ def _placeholder_router(session: dict, body: str) -> str:
     src = session.get("source_language", "?")
     tgt = session.get("target_language", "?")
     return (
-        f"[Sub-Task 6 router — not yet implemented]\n"
-        f"Pair: {src} → {tgt}\n"
+        f"[Router not yet implemented]\n"
+        f"Pair: {src} to {tgt}\n"
         f'Message received: "{body}"'
     )
 
 
-# ── dev entry-point ───────────────────────────────────────────────────────────
+# ── entry-point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
