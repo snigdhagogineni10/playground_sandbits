@@ -1,0 +1,6 @@
+twilio
+openai
+moviepy
+python-dotenv
+flask
+srt
