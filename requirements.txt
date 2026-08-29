@@ -1,6 +1,8 @@
-twilio
+requests
 openai
 moviepy
 python-dotenv
 flask
 srt
+python-telegram-bot==20.7
+gunicorn
